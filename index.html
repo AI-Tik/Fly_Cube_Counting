@@ -1,0 +1,257 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>數紅色立方體遊戲</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #f0f0f0;
+            font-family: Arial, sans-serif;
+        }
+
+        #start-message {
+            position: absolute;
+            top: 20px;
+            font-size: 24px;
+            font-weight: bold;
+            color: #333;
+            text-align: center;
+        }
+
+        #game-container {
+            position: relative;
+            width: 800px;
+            height: 400px;
+            perspective: 1000px;
+            overflow: hidden;
+            border: 1px solid #ccc;
+            background-color: #fff;
+        }
+
+        .cube {
+            position: absolute;
+            width: 50px;
+            height: 50px;
+            transform-style: preserve-3d;
+            animation: move-across 10s linear forwards, rotate 4s linear infinite;
+        }
+
+        .cube .face {
+            position: absolute;
+            width: 50px;
+            height: 50px;
+            background-color: #ccc;
+            border: 1px solid #000;
+            opacity: 0.8;
+        }
+
+        .cube .front  { transform: translateZ(25px); }
+        .cube .back   { transform: rotateY(180deg) translateZ(25px); }
+        .cube .right  { transform: rotateY(90deg) translateZ(25px); }
+        .cube .left   { transform: rotateY(-90deg) translateZ(25px); }
+        .cube .top    { transform: rotateX(90deg) translateZ(25px); }
+        .cube .bottom { transform: rotateX(-90deg) translateZ(25px); }
+
+        @keyframes move-across {
+            0% { left: -50px; }
+            100% { left: 850px; }
+        }
+
+        @keyframes rotate {
+            0% { transform: rotateY(0deg); }
+            100% { transform: rotateY(360deg); }
+        }
+
+        #question {
+            display: none;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+        }
+
+        #question h2 {
+            margin-bottom: 20px;
+        }
+
+        #options button {
+            margin: 10px;
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+
+        #result {
+            margin-top: 20px;
+            font-size: 18px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div id="start-message">留心睇吓幾多個紅色立方體飛過</div>
+    <div id="game-container"></div>
+    <div id="question">
+        <h2>有幾多個紅色立方體？</h2>
+        <div id="options"></div>
+        <div id="result"></div>
+    </div>
+
+    <script>
+        const startMessage = document.getElementById('start-message');
+        const container = document.getElementById('game-container');
+        const questionDiv = document.getElementById('question');
+        const optionsDiv = document.getElementById('options');
+        const resultDiv = document.getElementById('result');
+
+        const colors = ['red', 'blue', 'green', 'yellow'];
+        const totalCubes = Math.floor(Math.random() * 11) + 10; // 10 to 20
+        let redCount = 0;
+        let cubesPassed = 0;
+        let restartButtonAdded = false; // Track if restart button is added
+
+        function createCube(color) {
+            const cube = document.createElement('div');
+            cube.classList.add('cube');
+            cube.style.top = `${Math.random() * 300 + 50}px`; // Random vertical position
+
+            const faces = ['front', 'back', 'right', 'left', 'top', 'bottom'];
+            faces.forEach(face => {
+                const faceDiv = document.createElement('div');
+                faceDiv.classList.add('face', face);
+                faceDiv.style.backgroundColor = color;
+                cube.appendChild(faceDiv);
+            });
+
+            container.appendChild(cube);
+
+            // Remove cube after animation and check if all passed
+            cube.addEventListener('animationend', (e) => {
+                if (e.animationName === 'move-across') {
+                    cube.remove();
+                    cubesPassed++;
+                    if (cubesPassed === totalCubes) {
+                        showQuestion();
+                    }
+                }
+            });
+
+            return cube;
+        }
+
+        function startGame() {
+            startMessage.style.display = 'block';
+            redCount = 0;
+            cubesPassed = 0;
+            restartButtonAdded = false; // Reset restart button flag
+            container.innerHTML = '';
+            questionDiv.style.display = 'none';
+            resultDiv.textContent = '';
+            optionsDiv.innerHTML = '';
+
+            setTimeout(() => {
+                startMessage.style.display = 'none';
+                for (let i = 0; i < totalCubes; i++) {
+                    const color = colors[Math.floor(Math.random() * colors.length)];
+                    if (color === 'red') redCount++;
+                    setTimeout(() => {
+                        createCube(color);
+                    }, i * 1000); // Medium speed: 1 second interval between cubes
+                }
+            }, 2000); // Show start message for 2 seconds
+        }
+
+        function showQuestion() {
+            questionDiv.style.display = 'block';
+            optionsDiv.innerHTML = '';
+
+            // Generate 4 options: correct and 3 wrong (nearby numbers)
+            const options = new Set();
+            options.add(redCount);
+            while (options.size < 4) {
+                const wrong = redCount + Math.floor(Math.random() * 5) - 2; // ±0-2 but avoid duplicate
+                if (wrong >= 0 && wrong <= totalCubes && wrong !== redCount) {
+                    options.add(wrong);
+                }
+            }
+
+            const optionArray = Array.from(options).sort((a, b) => a - b);
+            optionArray.forEach(opt => {
+                const btn = document.createElement('button');
+                btn.textContent = opt;
+                btn.onclick = () => checkAnswer(opt);
+                optionsDiv.appendChild(btn);
+            });
+        }
+
+        function checkAnswer(selected) {
+            if (selected === redCount) {
+                resultDiv.textContent = '答啱啦！';
+                resultDiv.style.color = 'green';
+                // Add restart button only if not already added
+                if (!restartButtonAdded) {
+                    const restartBtn = document.createElement('button');
+                    restartBtn.textContent = '再玩過';
+                    restartBtn.onclick = startGame;
+                    optionsDiv.appendChild(restartBtn);
+                    restartButtonAdded = true; // Mark button as added
+                }
+            } else {
+                resultDiv.textContent = `答錯啦！正確答案係 ${redCount}。`;
+                resultDiv.style.color = 'red';
+            }
+        }
+
+        // Start the game
+        startGame();
+    </script>
+</body>
+</html>
